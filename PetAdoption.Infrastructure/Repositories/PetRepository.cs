@@ -1,0 +1,72 @@
+﻿using AutoMapper;
+using Microsoft.EntityFrameworkCore;
+using PetAdoption.Application.DTO;
+using PetAdoption.Application.Interfaces.InfrastructureInterfaces;
+using PetAdoption.Domain;
+using PetAdoption.Infrastructure.Interfaces;
+using System.Linq.Expressions;
+
+namespace PetAdoption.Infrastructure.Repositories
+{
+    public class PetRepository(IGenericRepository<Pet> _petRepo, IGenericRepository<PetPhoto> petPhotoRepo) : IPetRepository
+    {
+        public async Task<IEnumerable<Pet>> GetAllPetsAsync(Expression<Func<Pet, bool>> predicate = null)
+        {
+            return await _petRepo.ListAsync(predicate, a => a.PetPhotos);
+        }
+
+        public async Task<Pet?> GetPetByIdAsync(int id)
+        {
+            return await _petRepo.GetAsync(x => x.Id == id);
+        }
+
+        public async Task<IEnumerable<DropdownDTO>> GetDropdownAsync(Expression<Func<Pet, bool>> predicate = null)
+        {
+            var list = await _petRepo.ListAsync(predicate);
+
+            if (list == null || !list.Any())
+            {
+                return Enumerable.Empty<DropdownDTO>();
+            }
+
+            return list.Select(x => new DropdownDTO()
+            {
+                Id = x.Id,
+                Name = $"{x.Name} - {x.Breed}"
+            });
+        }
+
+        public async Task AddPetAsync(Pet pet)
+        {
+            await _petRepo.AddAsync(pet);
+            await _petRepo.SaveAsync();
+        }
+
+        public async Task UpdatePetAsync(Pet pet)
+        {
+            await _petRepo.UpdateWithSaveAsync(pet);
+        }
+
+        public async Task DeletePetAsync(int id)
+        {
+            var pet = await _petRepo.GetAsync(x => x.Id == id);
+            if (pet != null)
+            {
+                await petPhotoRepo.ListAsync(x => x.PetId == id).ContinueWith(async photos =>
+                {
+                    if (photos.Result.Any())
+                    {
+                        petPhotoRepo.DeleteRange(photos.Result);
+                    }
+                });
+
+                await _petRepo.DeleteWithSaveAsync(pet);
+            }
+        }
+
+        public async Task<Pet> GetAsync(Expression<Func<Pet, bool>> predicate)
+        {
+            return await _petRepo.GetAsync(predicate, a => a.PetPhotos);
+        }
+    }
+}
